@@ -44,7 +44,7 @@ typedef enum {
 } MetaCommandResult;
 
 typedef enum {
-    PREPARE_SUCCESS, PREPARE_UNRECOGNIZED_STATEMENT, PREPARE_SYNTAX_ERROR
+    PREPARE_SUCCESS, PREPARE_UNRECOGNIZED_STATEMENT, PREPARE_SYNTAX_ERROR, PREPARE_STRING_TOO_LONG, PREPARE_NEGATIVE_ID
 } PrepareResult;
 
 typedef enum {
@@ -57,8 +57,8 @@ typedef enum {
 
 typedef struct {
     uint32_t id;
-    char username[COLUMN_USERNAME_SIZE];
-    char email[COLUMN_EMAIL_SIZE];
+    char username[COLUMN_USERNAME_SIZE + 1];
+    char email[COLUMN_EMAIL_SIZE + 1];
 } Row;
 
 void print_row(Row *row) {
@@ -126,19 +126,36 @@ void *row_slot(Table *table, uint32_t row_num) {
     return page + byte_offset;
 }
 
+PrepareResult prepare_insert(InputBuffer *inputBuffer, Statement *statement) {
+    statement->type = STATEMENT_INSERT;
+    char *keyword = strtok(inputBuffer->buffer, " ");
+    char *id_as_string = strtok(NULL, " ");
+    char *username = strtok(NULL, " ");
+    char *email = strtok(NULL, " ");
+    if (id_as_string == NULL || username == NULL || email == NULL) {
+        return PREPARE_SYNTAX_ERROR;
+    }
+
+    int id = atoi(id_as_string);
+	if (id <= 0) {
+		return PREPARE_NEGATIVE_ID;
+	}
+    if (strlen(username) > COLUMN_USERNAME_SIZE) {
+        return PREPARE_STRING_TOO_LONG;
+    }
+    if (strlen(email) > COLUMN_EMAIL_SIZE) {
+        return PREPARE_STRING_TOO_LONG;
+    }
+
+    statement->row_to_insert.id = id;
+    strcpy(statement->row_to_insert.username, username);
+    strcpy(statement->row_to_insert.email, email);
+    return PREPARE_SUCCESS;
+}
+
 PrepareResult prepare_statement(InputBuffer *inputBuffer, Statement *statement) {
     if (strncmp(inputBuffer->buffer, "insert", 6) == 0) {
-        statement->type = STATEMENT_INSERT;
-        int args_scanned = sscanf(inputBuffer->buffer,
-                                  "insert %d %s %s",
-                                  &(statement->row_to_insert.id),
-                                  &(statement->row_to_insert.username),
-                                  &(statement->row_to_insert.email)
-        );
-        if (args_scanned < 3) {
-            return PREPARE_SYNTAX_ERROR;
-        }
-        return PREPARE_SUCCESS;
+        return prepare_insert(inputBuffer, statement);
     }
     if (strncmp(inputBuffer->buffer, "select", 6) == 0) {
         statement->type = STATEMENT_SELECT;
@@ -209,6 +226,12 @@ int main(int argc, char *argv[]) {
                 break;
             case (PREPARE_SYNTAX_ERROR):
                 printf("Syntax error. Couldn't parse statement\n");
+                continue;
+			case (PREPARE_NEGATIVE_ID):
+				printf("ID must be positive\n");
+				continue;
+            case (PREPARE_STRING_TOO_LONG):
+                printf("String too long\n");
                 continue;
             case (PREPARE_UNRECOGNIZED_STATEMENT):
                 printf("Unrecognized keyword at start of '%s'.\n", input_buffer->buffer);
