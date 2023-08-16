@@ -11,8 +11,10 @@ import (
 	"testing"
 )
 
+const testDbFilename = "test-db"
+
 func executeCommands(commands []string) ([]string, error) {
-	sidbCmd := exec.Command("./sidb")
+	sidbCmd := exec.Command("./sidb", testDbFilename)
 	sidbStdin, err := sidbCmd.StdinPipe()
 
 	stdOut := new(bytes.Buffer)
@@ -60,7 +62,6 @@ func TestSiDb(t *testing.T) {
 				"db > ",
 			},
 		},
-
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -72,6 +73,7 @@ func TestSiDb(t *testing.T) {
 				t.Errorf("Expected\n%v\n to be equal to\n%v\n", output, test.expectedOutput)
 			}
 		})
+		os.Remove(testDbFilename)
 	}
 }
 
@@ -96,6 +98,7 @@ func TestMaxStringLengthShouldBeEqualToMaxSize(t *testing.T) {
 	if !reflect.DeepEqual(output, expectedOutput) {
 		t.Errorf("Test failed\n expected: %v\nbe equal to: %v", output, expectedOutput)
 	}
+	os.Remove(testDbFilename)
 }
 
 func TestErrorIsReturnedWhenStringIsTooLong(t *testing.T) {
@@ -137,5 +140,27 @@ func TestErrorIsReturnedWhenStringIsTooLong(t *testing.T) {
 		})
 
 	}
+	os.Remove(testDbFilename)
 }
 
+func TestInMemoryPersistence(t *testing.T) {
+	firstCommands := []string{"insert 1 user1 user1@example.com", ".exit"}
+	firstExpectedOutput := []string{"db > Executed", "db > "}
+	secondCommands := []string{"select", ".exit"}
+	secondExpectedOutput := []string{"db > 1, user1, user1@example.com", "Executed", "db > "}
+	output, err := executeCommands(firstCommands)
+	if err != nil {
+		t.Error("Unexpected error:", err)
+	}
+	if !reflect.DeepEqual(output, firstExpectedOutput) {
+		t.Errorf("Expected\n%v\n to be equal to\n%v\n", output, firstExpectedOutput)
+	}
+	output, err = executeCommands(secondCommands)
+	if err != nil {
+		t.Error("Unexpected error:", err)
+	}
+	if !reflect.DeepEqual(output, secondExpectedOutput) {
+		t.Errorf("Expected\n%v\n to be equal to\n%v\n", output, secondExpectedOutput)
+	}
+	os.Remove(testDbFilename)
+}
